@@ -32,46 +32,53 @@ if uploaded_file is not None:
                 zip_ref.extract(db_filename, temp_dir)
                 db_path = os.path.join(temp_dir, db_filename)
                 
-                # Conexão com modo isolation_level=None para autocommit ou gerenciar manualmente
+                # Conecta ao banco de dados extraído
                 conn = sqlite3.connect(db_path)
                 cursor = conn.cursor()
 
-                # --- OPERAÇÃO DE LIMPEZA E INSERÇÃO ---
-                # Exemplo de IDs capturados (Substitua pela sua lista real de IDs)
-                captured_ids = ["id_1", "id_2", "id_3"] 
+                # --- LÓGICA DE LIMPEZA E INSERÇÃO ---
+                # Substitua pela sua lista real de IDs capturados
+                captured_ids = ["ID_EXEMPLO_1", "ID_EXEMPLO_2", "ID_EXEMPLO_3"]
 
-                if st.sidebar.button("Limpar e Atualizar Tabela Song"):
+                st.sidebar.warning("Ações de Modificação")
+                if st.sidebar.button("Limpar 'song' e Inserir IDs"):
                     try:
-                        # 1. Limpa a tabela mantendo a estrutura
-                        cursor.execute("DELETE FROM song")
+                        # 1. Deleta todos os registros da tabela song
+                        cursor.execute("DELETE FROM song;")
                         
                         # 2. Insere os novos IDs na coluna videoId
-                        for s_id in captured_ids:
-                            cursor.execute("INSERT INTO song (videoId) VALUES (?)", (s_id,))
+                        # Usamos executemany para maior eficiência
+                        data_to_insert = [(s_id,) for s_id in captured_ids]
+                        cursor.executemany("INSERT INTO song (videoId) VALUES (?);", data_to_insert)
                         
+                        # 3. SALVAR as alterações no arquivo
                         conn.commit()
-                        st.sidebar.success("Tabela 'song' atualizada com sucesso!")
+                        st.sidebar.success(f"Sucesso! {len(captured_ids)} IDs inseridos.")
+                        # Recarrega a página para atualizar a visualização dos dados
+                        st.rerun()
                     except Exception as ex:
-                        st.sidebar.error(f"Erro na transação: {ex}")
-                # ---------------------------------------
+                        st.sidebar.error(f"Erro ao atualizar banco: {ex}")
 
+                # Visualização das Tabelas
                 query_tables = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
                 tables = pd.read_sql_query(query_tables, conn)['name'].tolist()
 
                 if tables:
                     st.sidebar.subheader("Tabelas")
                     selected_table = st.sidebar.radio("Selecione para visualizar:", tables)
-                    columns_info = pd.read_sql_query(f"PRAGMA table_info('{selected_table}')", conn)
                     
-                    st.subheader(f"Tabela: `{selected_table}`")
+                    # Abas de visualização
                     tab1, tab2 = st.tabs(["📄 Dados", "🏗️ Estrutura (Schema)"])
                     
                     with tab1:
+                        # Lê os dados atualizados após o commit
                         df = pd.read_sql_query(f"SELECT * FROM {selected_table}", conn)
+                        st.subheader(f"Tabela: `{selected_table}`")
                         st.dataframe(df, use_container_width=True, hide_index=True)
                         st.caption(f"Total de registros: {len(df)}")
 
                     with tab2:
+                        columns_info = pd.read_sql_query(f"PRAGMA table_info('{selected_table}')", conn)
                         st.write("Detalhes das Colunas:")
                         st.table(columns_info[['name', 'type', 'notnull', 'pk']])
 
@@ -81,4 +88,4 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Erro ao processar: {e}")
 else:
-    st.info("👈 Faça o upload do arquivo para começar.")
+    st.info("👈 Faça o upload do arquivo .backup para começar.")
