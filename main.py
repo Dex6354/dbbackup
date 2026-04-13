@@ -29,7 +29,7 @@ if uploaded_file is not None:
         with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
             file_list = zip_ref.namelist()
             # Procura os arquivos específicos mencionados
-            db_filename = next((f for f in file_list if f in ["song.db", "music database"]), None)
+            db_filename = next((f for f in file_list if f in ["song.db", "Music Database"]), None)
 
             if db_filename:
                 zip_ref.extract(db_filename, temp_dir)
