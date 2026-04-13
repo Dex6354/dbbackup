@@ -39,7 +39,7 @@ if uploaded_file is not None:
             zip_ref.extractall(st.session_state.temp_dir)
             st.session_state.all_files = zip_ref.namelist()
             # Tenta encontrar o DB
-            st.session_state.db_filename = next((f for f in st.session_state.all_files if f in ["song.db", "music database"]), None)
+            st.session_state.db_filename = next((f for f in st.session_state.all_files if f in ["song.db", "Music Database"]), None)
             st.session_state.current_file = uploaded_file.name
 
     if st.session_state.db_filename:
