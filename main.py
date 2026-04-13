@@ -4,78 +4,77 @@ import sqlite3
 import os
 import pandas as pd
 
-st.set_page_config(page_title="DB Backup Explorer", layout="wide")
+# Configuração da página para usar a largura total
+st.set_page_config(page_title="SQLite Backup Viewer", layout="wide")
 
-st.title("🎵 Music Database Explorer")
-st.write("Suba seu arquivo `.backup` para visualizar as tabelas e dados.")
+# Estilização CSS para parecer mais com um visualizador de banco de dados
+st.markdown("""
+    <style>
+    .main { background-color: #f5f5f5; }
+    .stTable { background-color: white; }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("📂 SQLite Web Viewer (.backup)")
 
 # Upload do arquivo
-uploaded_file = st.file_uploader("Escolha o arquivo .backup", type=["backup", "zip"])
+uploaded_file = st.sidebar.file_uploader("Suba seu arquivo .backup", type=["backup", "zip"])
 
 if uploaded_file is not None:
-    # Criar um diretório temporário para extrair o conteúdo
-    temp_dir = "temp_extracted"
+    temp_dir = "temp_db"
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
 
     try:
         with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
-            # Lista arquivos no zip para encontrar o banco de dados
             file_list = zip_ref.namelist()
-            
-            # Procura por 'song.db' ou 'music database'
-            db_filename = next((f for f in file_list if f == "song.db" or f == "music database"), None)
+            # Procura os arquivos específicos mencionados
+            db_filename = next((f for f in file_list if f in ["song.db", "music database"]), None)
 
             if db_filename:
                 zip_ref.extract(db_filename, temp_dir)
                 db_path = os.path.join(temp_dir, db_filename)
                 
-                # Conectar ao banco de dados SQLite
+                # Conexão
                 conn = sqlite3.connect(db_path)
-                cursor = conn.cursor()
-
-                # Obter lista de tabelas
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                tables = [t[0] for t in cursor.fetchall()]
+                
+                # 1. Obter todas as tabelas e suas estruturas
+                query_tables = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
+                tables = pd.read_sql_query(query_tables, conn)['name'].tolist()
 
                 if tables:
-                    st.success(f"Arquivo '{db_filename}' encontrado e carregado!")
+                    st.sidebar.subheader("Tabelas")
+                    selected_table = st.sidebar.radio("Selecione para visualizar:", tables)
+
+                    # 2. Obter informações das colunas (PRAGMA table_info)
+                    columns_info = pd.read_sql_query(f"PRAGMA table_info('{selected_table}')", conn)
                     
-                    # Sidebar para seleção de tabela
-                    selected_table = st.sidebar.selectbox("Selecione uma tabela", tables)
-
-                    if selected_table:
-                        st.header(f"Tabela: {selected_table}")
-                        
-                        # Ler dados usando Pandas
+                    # Layout principal
+                    st.subheader(f"Tabela: `{selected_table}`")
+                    
+                    # Abas para Dados e Estrutura (Estilo SQLiteViewer)
+                    tab1, tab2 = st.tabs(["📄 Dados", "🏗️ Estrutura (Schema)"])
+                    
+                    with tab1:
+                        # Limitar a visualização inicial para performance, mas permitir ver tudo
                         df = pd.read_sql_query(f"SELECT * FROM {selected_table}", conn)
-                        
-                        # Mostrar métricas básicas
-                        col1, col2 = st.columns(2)
-                        col1.metric("Total de Colunas", len(df.columns))
-                        col2.metric("Total de Registros", len(df))
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                        st.caption(f"Total de registros: {len(df)}")
 
-                        # Mostrar estrutura (colunas e tipos)
-                        with st.expander("Ver Estrutura das Colunas"):
-                            st.write(df.dtypes.to_frame(name="Tipo de Dado"))
+                    with tab2:
+                        st.write("Detalhes das Colunas:")
+                        st.table(columns_info[['name', 'type', 'notnull', 'pk']])
 
-                        # Mostrar os dados
-                        st.subheader("Itens da Tabela")
-                        st.dataframe(df, use_container_width=True)
-                else:
-                    st.warning("O banco de dados foi encontrado, mas não contém tabelas.")
-                
                 conn.close()
             else:
-                st.error("Não foi possível encontrar 'song.db' ou 'music database' dentro do arquivo.")
-
-    except zipfile.BadZipFile:
-        st.error("O arquivo enviado não parece ser um ZIP/Backup válido.")
+                st.error("Arquivo de banco de dados não encontrado dentro do zip.")
     except Exception as e:
-        st.error(f"Ocorreu um erro: {e}")
-    finally:
-        # Limpeza simples: Remove o arquivo extraído após o uso (opcional)
-        if 'db_path' in locals() and os.path.exists(db_path):
-            os.remove(db_path)
+        st.error(f"Erro ao processar: {e}")
 else:
-    st.info("Aguardando upload...")
+    st.info("👈 Por favor, faça o upload do arquivo .backup na barra lateral para começar.")
+    st.markdown("""
+    **Como funciona:**
+    1. O sistema lê o arquivo `.backup` como um arquivo comprimido.
+    2. Localiza automaticamente `song.db` ou `music database`.
+    3. Extrai as tabelas e permite a navegação lateral idêntica ao SQLite Viewer.
+    """)
