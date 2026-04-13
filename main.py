@@ -6,7 +6,6 @@ import os
 import shutil
 import zipfile
 import json
-from ytmusicapi import YTMusic
 
 st.set_page_config(page_title="Music Database Generator", layout="wide")
 
@@ -25,20 +24,6 @@ def format_duration(seconds):
         return f"{minutes}:{remaining_seconds:02d}"
     except:
         return "0:00"
-
-def find_browse_id(obj):
-    """Busca recursiva pelo browseId do álbum (MPREb_) no JSON do YTMusic"""
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k == "browseId" and isinstance(v, str) and v.startswith("MPREb_"):
-                return v
-            result = find_browse_id(v)
-            if result: return result
-    elif isinstance(obj, list):
-        for item in obj:
-            result = find_browse_id(item)
-            if result: return result
-    return None
 
 st.title("📂 Gerador de base: Music Database")
 
@@ -72,7 +57,7 @@ if vivi_file:
         conn_v.close()
 
         lista_ids = df_source['songId'].tolist()
-        st.success(f"✅ {len(lista_ids)} IDs recuperados. Iniciando busca de Album IDs...")
+        st.success(f"✅ {len(lista_ids)} IDs e metadados recuperados.")
 
         if not os.path.exists(BASE_SIMP):
             st.error(f"Arquivo base '{BASE_SIMP}' não encontrado.")
@@ -84,31 +69,19 @@ if vivi_file:
             shutil.copy2(BASE_SIMP, db_output_path)
 
             try:
-                yt = YTMusic()
                 conn_out = sqlite3.connect(db_output_path)
                 cursor = conn_out.cursor()
 
                 # --- 1. LIMPEZA E INSERÇÃO NA TABELA song ---
                 cursor.execute("DELETE FROM song")
                 
+                # Timestamp solicitado
                 ts_val = 1775992827379
-                dados_song = []
                 
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                for i, row in df_source.iterrows():
+                # Preparar dados para inserção com as novas colunas
+                dados_song = []
+                for _, row in df_source.iterrows():
                     s_id = row['songId']
-                    status_text.text(f"Processando {i+1}/{len(df_source)}: {s_id}")
-                    
-                    # Lógica de captura do Album ID
-                    album_id = None
-                    try:
-                        response = yt._send_request("next", {"videoId": s_id})
-                        album_id = find_browse_id(response)
-                    except:
-                        album_id = None
-
                     d_raw = int(row['duration']) if pd.notna(row['duration']) else 0
                     d_fmt = format_duration(d_raw)
                     is_explicit = int(row['explicit']) if pd.notna(row['explicit']) else 0
@@ -116,25 +89,23 @@ if vivi_file:
                     
                     dados_song.append((
                         s_id, d_fmt, d_raw, 1, is_explicit, "INDIFFERENT", title, "Song",
-                        0,        # liked
-                        0,        # totalPlayTime
-                        0,        # downloadState
-                        ts_val,   # favoriteAt
-                        ts_val,   # downloadedAt
-                        ts_val,   # inLibrary
-                        None,     # canvasUrl
-                        None,     # canvasThumbUrl
-                        album_id  # albumId preenchido aqui
+                        0,      # liked
+                        0,      # totalPlayTime
+                        0,      # downloadState
+                        ts_val, # favoriteAt
+                        ts_val, # downloadedAt
+                        ts_val, # inLibrary
+                        None,   # canvasUrl
+                        None    # canvasThumbUrl
                     ))
-                    progress_bar.progress((i + 1) / len(df_source))
                 
                 query_insert = """
                     INSERT INTO song (
                         videoId, duration, durationSeconds, isAvailable, isExplicit, 
                         likeStatus, title, videoType, liked, totalPlayTime, 
                         downloadState, favoriteAt, downloadedAt, inLibrary, 
-                        canvasUrl, canvasThumbUrl, albumId
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        canvasUrl, canvasThumbUrl
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 
                 cursor.executemany(query_insert, dados_song)
@@ -173,7 +144,7 @@ if vivi_file:
                 
                 st.divider()
                 st.write(f"📊 Total processado: {total_songs} músicas.")
-                st.info("✅ Album IDs extraídos e gravados com sucesso.")
+                st.info("✅ Todas as restrições NOT NULL foram preenchidas conforme solicitado.")
                 
                 st.download_button(
                     label="📥 BAIXAR SIMPMUSIC.BACKUP",
